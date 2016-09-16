@@ -53,6 +53,12 @@ bool CartesianRobot::initialize(const std::string &robot_description, const std:
   return true;
 }
 
+bool CartesianRobot::initialize(robot_model::RobotModelConstPtr robot_model, const std::string &group_name,
+                                const std::string &world_frame, const std::string &tcp_frame)
+{
+  return true;
+}
+
 bool CartesianRobot::isValidMove(const double *s, const double *f, double dt) const
 {
   for (size_t i = 0; i < getDOF(); ++i)
@@ -61,6 +67,19 @@ bool CartesianRobot::isValidMove(const double *s, const double *f, double dt) co
       return false;
   }
   return true;
+}
+
+descartes_core::RobotModelPtr CartesianRobot::clone() const
+{
+  descartes_core::RobotModelPtr model_clone(new CartesianRobot);
+  if (model_clone->initialize("", "", "", ""))
+  {
+    return model_clone;
+  }
+  else
+  {
+    return 0;
+  }
 }
 
 bool CartesianRobot::getIK(const Eigen::Affine3d &pose, const std::vector<double> &seed_state,
