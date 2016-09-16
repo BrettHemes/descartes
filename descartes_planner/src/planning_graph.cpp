@@ -183,21 +183,34 @@ bool PlanningGraph::calculateJointSolutions(const TrajectoryPtPtr* points, const
 {
   poses.resize(count);
 
-  for (std::size_t i = 0; i < count; ++i)
+  bool success = true;
+  #pragma omp parallel shared(success)
   {
-    std::vector<std::vector<double>> joint_poses;
-    points[i]->getJointPoses(*robot_model_, joint_poses);
+    //make private copy of robot model for each thread
+    descartes_core::RobotModelPtr model_copy = robot_model_->clone();
 
-    if (joint_poses.empty())
+    #pragma omp for
+    for (std::size_t i = 0; i < count; ++i)
     {
-      ROS_ERROR_STREAM(__FUNCTION__ << ": IK failed for input trajectory point with ID = " << points[i]->getID());
-     return false;
-    }
+      #pragma omp flush (success)
+      if (success)
+      {
+        std::vector<std::vector<double>> joint_poses;
+        points[i]->getJointPoses(*robot_model_, joint_poses);
 
-    poses[i] = std::move(joint_poses);
+        if (joint_poses.empty())
+        {
+          ROS_ERROR_STREAM(__FUNCTION__ << ": IK failed for input trajectory point with ID = " << points[i]->getID());
+          success = false;
+          #pragma omp flush (success)
+        }
+
+        poses[i] = std::move(joint_poses);
+      }
+    }
   }
 
-  return true;
+  return success;
 }
 
 std::vector<LadderGraph::EdgeList> PlanningGraph::calculateEdgeWeights(const std::vector<double>& start_joints,
@@ -212,6 +225,7 @@ std::vector<LadderGraph::EdgeList> PlanningGraph::calculateEdgeWeights(const std
   std::vector<LadderGraph::EdgeList> edges (n_start_points); // ret value
   LadderGraph::EdgeList edge_scratch (n_end_points); // pre-allocated space to work in
 
+  #pragma omp parallel for
   for (size_t i = 0; i < n_start_points; i++) // from rung
   {
     auto start_index = i * dof;
