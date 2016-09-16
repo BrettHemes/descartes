@@ -214,7 +214,9 @@ bool PlanningGraph::calculateJointSolutions(const TrajectoryPtPtr* points, const
 }
 
 std::vector<LadderGraph::EdgeList> PlanningGraph::calculateEdgeWeights(const std::vector<double>& start_joints,
-                                         const std::vector<double>& end_joints, size_t dof, const TimingConstraint& tm, bool &found_edges) const
+                                                                       const std::vector<double>& end_joints,
+                                                                       size_t dof, const TimingConstraint& tm,
+                                                                       bool &found_edges) const
 {
   const auto from_size = start_joints.size();
   const auto to_size = end_joints.size();
@@ -223,41 +225,45 @@ std::vector<LadderGraph::EdgeList> PlanningGraph::calculateEdgeWeights(const std
   auto total_edges = 0u;
 
   std::vector<LadderGraph::EdgeList> edges (n_start_points); // ret value
-  LadderGraph::EdgeList edge_scratch (n_end_points); // pre-allocated space to work in
 
-  #pragma omp parallel for
-  for (size_t i = 0; i < n_start_points; i++) // from rung
+  #pragma omp parallel
   {
-    auto start_index = i * dof;
-    auto count = 0u;
+    LadderGraph::EdgeList edge_scratch (n_end_points); // pre-allocated space to work in
 
-    for (size_t j = 0; j < n_end_points; j++) // to rung
+    #pragma omp for
+    for (size_t i = 0; i < n_start_points; i++) // from rung
     {
-      auto end_index = j * dof;
-      if (tm.isSpecified() && !robot_model_->isValidMove(start_joints.data() + start_index,
-                                                         end_joints.data() + end_index, tm.upper))
-      {
-        continue;
-      }
+      auto start_index = i * dof;
+      auto count = 0u;
 
-      double cost;
-      if (custom_cost_function_)
+      for (size_t j = 0; j < n_end_points; j++) // to rung
       {
-        cost = custom_cost_function_(&start_joints[start_index], &end_joints[end_index]);
-      }
-      else
-      {
-        cost = 0.0;
-        for (size_t k = 0; k < dof; ++k)
+        auto end_index = j * dof;
+        if (tm.isSpecified() && !robot_model_->isValidMove(start_joints.data() + start_index,
+                                                           end_joints.data() + end_index, tm.upper))
         {
-          cost += std::abs(start_joints[start_index + k] - end_joints[end_index + k]);
+          continue;
         }
-      }
-      edge_scratch[count++] = {cost, static_cast<unsigned>(j)};
-    }
 
-    edges[i] = LadderGraph::EdgeList(edge_scratch.begin(), edge_scratch.begin() + count);
-    total_edges += count;
+        double cost;
+        if (custom_cost_function_)
+        {
+          cost = custom_cost_function_(&start_joints[start_index], &end_joints[end_index]);
+        }
+        else
+        {
+          cost = 0.0;
+          for (size_t k = 0; k < dof; ++k)
+          {
+            cost += std::abs(start_joints[start_index + k] - end_joints[end_index + k]);
+          }
+        }
+        edge_scratch[count++] = {cost, static_cast<unsigned>(j)};
+      }
+
+      edges[i] = LadderGraph::EdgeList(edge_scratch.begin(), edge_scratch.begin() + count);
+      total_edges += count;
+    }
   }
 
   found_edges = (total_edges != 0u);
